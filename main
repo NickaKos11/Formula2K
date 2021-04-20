@@ -1,0 +1,299 @@
+Program BS170;
+const
+BASE_BOARD = 1;
+BOARD_COUNT = 2;
+{$I Pins.inc}
+VEC_FILE : string = 'MOS_BS170';
+{$I Start.inc}
+Collector = PIN_4;
+Base = PIN_16;
+Emitter = PIN_14;
+procedure Transfer();
+var
+ Uce : Real;
+ Ube : Real;
+ Uce_Izm : Real;
+ Ube_Izm : Real;
+ Ic_ADC : Real;
+ Ib_ADC : Real;
+ Ib_prev : Real;
+ Ib_max : Real;
+ Inc : Real;
+ P_max : Real;
+ S,temp,S1,S2: String;
+begin
+ Ib_max := 900000;
+ P_max := 100;
+ SetPower(pVDD, 0, 0, Source_Off);
+ SetPower(pVCC, 0, 0, Source_Off);
+ Uce := Uce_start_tr;
+ if check = 1 then Inc := inc_test_tr;
+ if check = 0 then Inc := inc_Ube_tr;
+ while Uce <= Uce_stop_tr do begin
+  Ube := Ube_start_tr;
+  SetPower(pVDD, Uce, 500E-3, Source_On);
+  SetDCM(Ube, R8, 1E-5, DCM_1);
+  ConnectDCM(DCM_To_Pins);
+  ConnectPin(Base, [PIN_To_DCM]);
+  ConnectADC(Adc_To_ICC);
+  Ib_prev := 0.0;
+  while Ube <= Ube_stop_tr do begin  
+           SetDCM(Ube, R8, 1E-5, DCM_5);
+           ConnectDCM(DCM_To_Pins);
+           ConnectPin(Base, [PIN_To_DCM]);
+           DelayMs(delay_be_tr);
+  	     Ib_ADC := OnlyMeasDCMCurent();
+       	if Ib_ADC*1e6>=Ib_max then
+              begin
+                   ConnectPin(Base, []);
+                   Ib_ADC:=Ib_prev;
+                   RealToStr(Ube, S);
+                   RealToStr(Uce, S1);
+    	           PrintResult(S1, 'Input', Ib_ADC * 1e6, 0, 1e3, S);
+                   Ube := Ube + Inc;
+              end;
+       	if Ib_ADC*1e6<Ib_max then
+              begin
+                   Ube_Izm := OnlyMeasDCMVoltage(ADCRange_Auto);
+            	   ConnectPin(Base, []);
+                   DelayMs(delay_be_tr);
+                   ConnectDCM(DCM_To_Pins);
+                   ConnectPin(Collector, [PIN_To_DCM]);
+                   Uce_Izm := OnlyMeasDCMVoltage(ADCRange_Auto);
+                   Ic_ADC := OnlyMeasDCMCurent();
+                   if Uce_Izm*Ic_ADC>=P_max then
+                      begin
+                                Ib_ADC:=Ib_prev;
+                            	RealToStr(Ube, S);
+                         	   RealToStr(Uce, S1);
+                            	PrintResult(S1, 'Input', Ib_ADC * 1e6, 0, 1e3, S);
+                            	Ube := Ube + Inc;
+                      end;
+                   if Uce_Izm*Ic_ADC<P_max then
+                      begin
+                       	Ib_prev := Ube_Izm;
+                       	ConnectPin(Base, []);
+                           ConnectPin(Collector, []);
+                      end;
+              end;
+       RealToStr(Uce, S2);
+       StrCopy(S1, 'Uce = ');
+      strConcat(S1, S2);
+      RealToStr(Ube, S);
+      PrintResult(S1, 'Input', Ib_ADC * 1e6, 0, 1e3, S);
+  	Ube := Ube + Inc;
+   end;
+   Uce := Uce + inc_Uce_tr;
+   SetPower(pVDD, 0, 0, Source_Off);
+   SetPower(pVCC, 0, 0, Source_Off);
+ end;
+end;
+ 
+procedure Output(); // выходные
+var
+ Uce : Real;
+ inc_Uce : Real;
+ Uce_bound : Real;
+ Ube : Real;
+ Uce_Izm : Real;
+ Ube_Izm : Real;
+ Ic_ADC : Real;
+ Ic_prev : Real;
+ Ic_max : Real;
+ Ib_ADC : Real;
+ Ib_Izm : Real;
+ P_max : Real;
+ S,temp,S1,S2 : String;
+ F_Ic : Integer;
+ 
+begin
+ P_max := 1;
+ Ic_max := 1900000;
+ SetPower(pVDD, 0, 0, Source_Off); // “станавливает параметры указанного источника активной платы SVPN //CHANGE
+ SetPower(pVCC, 0, 0, Source_Off);
+ Ib_ADC := Ib_ABC_start_out;
+ while Ib_ADC <= Ib_ABC_stop_out do begin
+  Uce := Uce_start_out;
+ 
+  SetPower(pVDD, Uce, 500E-3, Source_On); //инициализация не переменной, а 0.0
+  SetDCM(1.9, R8, Ib_ADC, DCM_Auto);
+  ConnectDCM(DCM_To_Pins);
+  ConnectPin(Base, [PIN_To_DCM]);
+  StrCopy(S1, 'Ic [mA] Ib = ');
+  RealToStr(Ib_ADC, temp);
+  StrConcat(S1, temp);
+ 
+  F_Ic := 0;
+  Ic_prev := 0;
+  Uce_bound := 2;
+  while Uce <= Uce_stop_out do begin
+   if Uce<Uce_bound then inc_Uce := inc_Uce_min;
+   if Uce>=Uce_bound then inc_Uce := inc_Uce_out;
+   if F_Ic=1 then
+  	begin
+      RealToStr(Ib_Izm, S2);
+      StrCopy(S1, 'Ib = ');
+      strConcat(S1, S2);
+      RealToStr(Uce, S);
+  	Ic_prev := Ic_ADC;
+      PrintResult(S1, 'Output', Ic_ADC*1e3, 0, 1e4, S);
+       	Uce := Uce + inc_Uce;
+  	end;
+   if F_Ic=0 then
+  	begin
+           SetPower(pVDD, Uce, 500E-3, Source_On);
+           ConnectADC(Adc_To_IDD);
+           DelayMs(delay_ce_out);
+           Ic_ADC := OnlyMeasCurent();
+       	ConnectADC(ADC_To_GND);
+       	if Ic_ADC*1e6>=Ic_max then
+              begin
+                   F_Ic:=1;
+                   Ic_ADC := Ic_prev;
+                  RealToStr(Ib_Izm, S2);
+                  StrCopy(S1, 'Ib = '); //(S1, 'Id [mA] Uds = ')
+                  strConcat(S1, S2);
+                  RealToStr(Uce, S);
+                  Ic_prev := Ic_ADC;
+                  PrintResult(S1, 'Output', Ic_ADC*1e3, 0, 1e4, S);
+                   Uce := Uce + inc_Uce;
+              end;
+       	if Ic_ADC*1e6<Ic_max then
+              begin
+                   if Ic_ADC*Uce>=P_max then
+                      begin
+                       	F_Ic:=1;
+                       	Ic_ADC := Ic_prev;
+                       	RealToStr(Ib_Izm, S2);
+         	              StrCopy(S1, 'Ib = '); //(S1, 'Id [mA] Uds = ')
+                       	strConcat(S1, S2);
+                       	RealToStr(Uce, S);
+                       	Ic_prev := Ic_ADC;
+                       	PrintResult(S1, 'Output', Ic_ADC*1e3, 0, 1e4, S);
+                       	Uce := Uce + inc_Uce;
+                      end;
+                   if Ic_ADC*Uce<P_max then
+                      begin
+                       	SetDCM(1.9, R8, Ib_ADC, DCM_Auto);
+    	                   ConnectDCM(DCM_To_Pins);
+                       	ConnectPin(Base, [PIN_To_DCM]);
+ 
+                           DelayMs(delay_ce_out);
+                       	
+                       	Ib_Izm := OnlyMeasDCMCurent();
+                           DelayMs(delay_ce_out);
+                       	RealToStr(Ib_Izm, S2);
+                       	StrCopy(S1, 'Ib = '); //(S1, 'Id [mA] Uds = ')
+                       	strConcat(S1, S2);
+                       	RealToStr(Uce, S);
+                       	Ic_prev := Ic_ADC;
+                       	PrintResult(S1, 'Output', Ic_ADC*1e3, 0, 1e4, S);
+                       	Uce := Uce + inc_Uce;
+                      end;
+              end;
+  	end;
+  end;
+ 
+  ConnectPin(Collector, []);
+  SetPower(pVDD, 0, 0, Source_Off); // на цикл раньше
+  SetPower(pVCC, 0, 0, Source_Off);  //на цикл раньше
+  Ib_ADC := Ib_ADC + inc_Ib_out;
+ end;
+end;
+ 
+procedure Per(); //Передаточные
+var
+ Uce : Real;
+ Ube : Real;
+ Uce_Izm : Real;
+ Ube_Izm : Real;
+ Ic_ADC : Real;
+ Ib_ADC : Real;
+ Ic_prev : Real;
+ Ic_max : Real;
+ Inc : Real;
+ P_max : Real;
+ S,temp,S1,S2: String;
+ F : Integer;
+ F_range : Integer;
+ 
+begin
+ Ic_max := 100000;
+ P_max := 1;
+ SetPower(pVDD, 0, 0, Source_Off); // “станавливает параметры указанного источника активной платы SVPN //CHANGE
+ SetPower(pVCC, 0, 0, Source_Off);
+ Uce := Uce_start_tr;
+ if check = 1 then Inc := inc_test_tr;
+ if check = 0 then Inc := inc_Ube_tr;
+ 
+ while Uce <= Uce_stop_tr do begin
+  Ube := Ube_start_tr;
+ 
+  SetPower(pVCC, Ube, 500E-3, Source_On);
+ 
+  SetDCM(Uce, R8, 1E-5, DCM_5);
+  ConnectDCM(DCM_To_Pins); // Подключает измеритель DCM к заданной глобальной цепи Тестера
+  ConnectPin(Collector, [PIN_To_DCM]);
+ 
+  ConnectADC(Adc_To_ICC);
+  StrCopy(S1, 'Ic [mA] Uce = ');
+  RealToStr(Uce, temp);
+  strConcat(S1, temp);
+ 
+  Ic_prev := 0.0;
+  F := 0;
+  F_range := 1;
+ 
+  while Ube <= Ube_stop_tr do begin
+           SetPower(pVCC, Ube, 500E-3, Source_On);
+           ConnectDCM(DCM_To_Pins);
+           ConnectPin(Collector, [PIN_To_DCM]);
+           DelayMs(delay_be_tr);
+           Ic_ADC := OnlyMeasDCMCurent();
+ 
+       RealToStr(Uce, S2);
+       StrCopy(S1, 'Uce = ');
+ 
+      strConcat(S1, S2);
+  	RealToStr(Ube, S);
+           PrintResult(S1, 'Per', Ic_ADC * 1e6, 0, 1e3, S);
+       	Ube := Ube + Inc;
+   end;
+   Uce := Uce + inc_Uce_tr; //изменение не зависит от режима
+ 
+   SetPower(pVDD, 0, 0, Source_Off); // “станавливает параметры указанного источника активной платы SVPN
+   SetPower(pVCC, 0, 0, Source_Off);
+ end;
+end;
+ 
+INITIALIZATION  // Секция инициализации.
+LoadFKFile('FK_BS170.tsq', False);
+Time_to_FKRec('FTM_BS170', 'FK_BS170');
+ActivateFileFK('FK_BS170.tsq', True);
+ 
+MEASBEGIN // Секция измерительной программы.
+ //var Check := 0;
+ //Check := QueryBox('Выполнить тестовое измерение?','Тествое измерение', MB_YESNO);
+ if Check = 1 then Transfer();
+ if Check = 0 then begin
+ if Meas = 0 then
+   	begin
+   	 Transfer();
+   	end;
+ 
+ if Meas = 1 then
+   	begin
+ 	Output();
+   	end;
+ 
+ if Meas = 2 then
+   	begin
+   	 Transfer();
+   	 Per();
+   	 Output();
+   	end;
+ if ((Meas <> 0) and (Meas <> 1) and (Meas <> 2))then ErrorBox('Неправильно задан Meas','Я Ошибка');
+end;
+FINALIZATION  // Секция завершения
+ UnConnectAll;
+END.
